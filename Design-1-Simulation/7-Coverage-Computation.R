@@ -1,6 +1,4 @@
 
-#Try larger sample size
-
 args(SimulateBinaryDesign1)
 set.seed(3752)
 dat <- SimulateBinaryDesign1(sample_size = 150,
