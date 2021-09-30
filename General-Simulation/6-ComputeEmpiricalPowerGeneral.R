@@ -1,50 +1,95 @@
 #Evaluate power prediction performance for the general SMART
-#Produces the right-hand plot of Figure 3
 
 n_grid <- seq(150,500,50)
 mc_param_sim <- MCBUpperLimits <-vector("list",length = length(n_grid))
 
-#Take simulated SMART dataset, compute the marginal response probabilties, transform to EDTR response probabilties, compute empirical power
 
-set.seed(3743)
-for (i in 1:length(seq(150,500,50))) {
+library(doParallel)
+library(doRNG)
 
-  for (j in 1:1000) {
+#Number of cores/threads
+no_cores <- detectCores()-2
 
-    
-    mc_param_sim[[i]][[j]] <-PosteriorTrtSeqProbGeneral(niter=1000, sim_binary_grid[[i]][[j]])
-    MCBUpperLimits[[i]][[j]] <- ComputeMCBUpperLimitsGeneral(ComputePosteriorEDTRProbsGeneral(mc_param_sim[[i]][[j]]))
-    
-    print(j)
-    
-  }
-  
-  
+cl<-makeCluster(no_cores)
+registerDoParallel((cl))
+Sys.time()
+
+n <- 2000; p <- length(n_grid)
+rng <- RNGseq( n * p, 123)
+tst_0.5_interaction_start <- Sys.time()
+mc_param_sim <- foreach(j=1:2000)%:% foreach(i =1:length(n_grid),r=rng[(j-1)*p + 1:p],.errorhandling = "pass",.packages=c("dplyr",
+                                                                                        "LaplacesDemon",
+                                                                                        "MASS")) %dopar% {# set RNG seed
+                                                                                          rngtools::setRNG(r)
+                                                                                          PosteriorTrtSeqProbGeneral(niter=1000, sim_binary_grid[[i]][[j]])
 }
+stopCluster(cl)
+Sys.time()
 
-#Compute the log-OR comparing each EDTR to the best
-round(LogOR(),2)
+tst_0.5_interaction_stop <- Sys.time()
+##########
+library(doParallel)
 
+#Number of cores/threads
+no_cores <- detectCores()-2
 
-logOdds <- function(x) log(x/(1-x))
+cl<-makeCluster(no_cores)
+registerDoParallel((cl))
+Sys.time()
 
-#round(max(colMeans(logOdds(ComputePosteriorEDTRProbsGeneral(do.call(rbind,lapply(mc_param_sim[[8]],function(x)x))))))-(colMeans(logOdds(ComputePosteriorEDTRProbsGeneral(do.call(rbind,lapply(mc_param_sim[[8]],function(x)x)))))),2)
-
-
-predicted_power_grid <- rep(NA,length(n_grid))
-set.seed(3754)
-for (i in 1:length(n_grid))  {
-predicted_power_grid[i] <- ComputePowerBayesianGeneral(n_grid[i],
-                     response_prob = c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),
-                     0.7,
-                     0.5,
-                     rejection_indices = c(1,2,4,5,6,7))
+n <- 2000; p <- length(n_grid)
+rng <- RNGseq( n * p, 123)
+tst_0.5_interaction_start <- Sys.time()
+MCBUpperLimits <- foreach(j=1:2000)%:% foreach(i =1:length(n_grid),r=rng[(j-1)*p + 1:p],.errorhandling = "pass",.packages=c("dplyr",
+                                                                                                     "LaplacesDemon",
+                                                                                                     "MASS")) %dopar% {
+                                                                                                       # set RNG seed
+                                                                                                       rngtools::setRNG(r)
+                                                                                                       ComputeMCBUpperLimitsGeneral(ComputePosteriorEDTRProbsGeneral(mc_param_sim[[j]][[i]]))
 }
+stopCluster(cl)
+Sys.time()
+
+tst_0.5_interaction_stop <- Sys.time()
+
+
+
+library(doParallel)
+
+#Number of cores/threads
+no_cores <- detectCores()-2
+
+cl<-makeCluster(no_cores)
+registerDoParallel((cl))
+Sys.time()
+
+rng <- RNGseq(length(n_grid),123)
+
+tst_0.5_interaction_start <- Sys.time()
+predicted_power_grid <- foreach(i =1:length(n_grid),r=rng[1:length(n_grid)],.errorhandling = "pass",.packages=c("dplyr",
+                                                                                                    "LaplacesDemon",
+                                                                                                    "MASS")) %dopar% { 
+                                                                                                      rngtools::setRNG(r)
+                                                                                                      
+                                                                                                      ComputePowerBayesianGeneral(n_grid[i],
+                                                                                                                                                 response_prob = c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),
+                                                                                                                                                 0.5,
+                                                                                                                                                 0.7,
+                                                                                                                                                 threshold = 0.8)
+}
+stopCluster(cl)
+Sys.time()
+
+tst_0.5_interaction_stop <- Sys.time()
+
+
+summary_melt <- reshape2::melt(data.frame('n_grid'=n_grid,'Predicted Power'=unlist(predicted_power_grid),
+                     'Empirical Power' = unlist(lapply(1:length(n_grid),function(w) mean(apply(do.call(rbind,lapply(MCBUpperLimits,function(x) x[[w]]))[,c(1,2,4,5,6,7)],1,function(z)prod(z<=0)))))),id.vars='n_grid')
+
 
 
 library(ggplot2)
-g_power_general <- ggplot(data.frame(n_grid, reshape2::melt(cbind('Predicted Power'=predicted_power_grid,
-                                                                   'Empirical Power' = unlist(lapply(1:length(n_grid),function(x) mean(do.call(rbind,MCBUpperLimits[[x]])[,1]<=0&do.call(rbind,MCBUpperLimits[[x]])[,2]<=0&do.call(rbind,MCBUpperLimits[[x]])[,4]<=0&do.call(rbind,MCBUpperLimits[[x]])[,5]<=0&do.call(rbind,MCBUpperLimits[[x]])[,6]<=0&do.call(rbind,MCBUpperLimits[[x]])[,7]<=0)))))),aes(x=n_grid,y=value,color=Var2,linetype=Var2))+
+g_power_general <- ggplot(summary_melt,aes(x=n_grid,y=value,color=factor(variable),linetype=factor(variable)))+
   geom_line(size=0.8)+
   geom_point(size=4)+
   geom_hline(yintercept=0.8)+
@@ -62,9 +107,9 @@ g_power_general <- ggplot(data.frame(n_grid, reshape2::melt(cbind('Predicted Pow
         legend.text=element_text(size=14),
         legend.key.width = unit(2,"cm"),
         legend.title=element_blank(),
-        legend.position="none") #+ 
+        legend.position="none")
 
-pdf("General-power-plot-2-1-21.pdf")
+#pdf("General-power-plot-9-29-21.pdf")
 g_power_general
-dev.off()
+#dev.off()
 

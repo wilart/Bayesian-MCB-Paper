@@ -3,9 +3,9 @@
 library(LaplacesDemon)
 PosteriorTrtSeqProbDesign1 <- function(niter, dat) {
   
-  #Arguments
-  #niter: number of draws from the posteriors of response probabilities
-  #dat: dataset
+  # Arguments:
+  # niter: number of draws from the posteriors of response probabilities
+  # dat: dataset
   
   #End of study binary response indicator
   y <- dat$y

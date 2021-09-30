@@ -3,8 +3,8 @@
 GeneralSimulateBinary <- function(sample_size=1000,
                                   n_sim,
                                   response_prob = c(0.5,0.9,0.7,0.6,0.8,0.8,0.4,0.5),
-                                  stage_one_trt_one_response_prob = 0.7,
-                                  stage_one_trt_two_response_prob = 0.4) {
+                                  stage_one_trt_one_response_prob = 0.4,
+                                  stage_one_trt_two_response_prob = 0.7) {
   
   # Arguments
   # sample_size: sample size
@@ -27,8 +27,12 @@ GeneralSimulateBinary <- function(sample_size=1000,
     
     #Response probabilities for stage-1
     s<-rep(NA,sample_size)
-    s[a1==-1] <- rbinom(length(which(a1==-1)),size=1,stage_one_trt_one_response_prob)
-    s[a1==1] <- rbinom(length(which(a1==1)),size=1,stage_one_trt_two_response_prob)
+    #s[a1==-1] <- rbinom(length(which(a1==-1)),size=1,stage_one_trt_one_response_prob)
+    #s[a1==1] <- rbinom(length(which(a1==1)),size=1,stage_one_trt_two_response_prob)
+    
+    s[a1==-1] <- rbinom(length(which(a1==-1)),size=1,stage_one_trt_two_response_prob)
+    s[a1==1] <- rbinom(length(which(a1==1)),size=1,stage_one_trt_one_response_prob)
+    
     #####################
 
     #Simulate binary outcomes
@@ -52,7 +56,7 @@ GeneralSimulateBinary <- function(sample_size=1000,
 set.seed(12374)
 
 sim_binary_grid <- lapply(seq(150,500,50),function(x) GeneralSimulateBinary(sample_size=x, 
-                                                                            n_sim=1000,
+                                                                            n_sim=2000,
                                                                             response_prob = c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),
-                                                                            0.7,
-                                                                            0.5))
+                                                                            0.5,
+                                                                            0.7))

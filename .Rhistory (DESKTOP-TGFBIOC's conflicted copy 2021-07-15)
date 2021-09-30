@@ -1,0 +1,512 @@
+Delta <- apply(MSM_outcomes_250,2,median)
+Delta[8] = 0
+smartsizer::computePower(V = as.matrix(Matrix::nearPD(250*var(MSM_outcomes_250))$mat[1:8,1:8]),
+Delta = -Delta,
+min_Delta = 1,alpha=0.05,sample_size=250)
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+upper_limit_2 <- rep(0,4)
+upper_limit_2[max_odds_ind] <- 0
+upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit=2)
+}
+SimulateBinaryDesign1 <-
+function(sample_size=1000,
+n_sim,
+response_prob=c(0.5,0.5,0.5,0.8,0.7,0.5),
+stage_one_trt_one_response_prob = 0.7,
+stage_one_trt_two_response_prob = 0.4){
+# Arguments:
+# sample_size: sample size
+# n_sim: number of replicate datasets
+# response_prob: vector of probabilities of response for each of the 6 embedded treatment sequences
+# stage_one_trt_one_response_prob: probability of response to first stage-1 treatment
+# stage_one_trt_two_response_prob: probability of response to second stage-1 treatment
+sim_list <- vector("list", length = n_sim)
+for (i in 1:n_sim){
+#First stage treatment indicator: coded as -1 and +1
+a1 <- 2*rbinom(sample_size,1,.5)-1
+#Second stage treatment indicator: coded as -1 and +1
+a2 <- 2*rbinom(sample_size,1,0.5)-1
+#Stage-1 response probabilities
+s<-rep(NA,sample_size)
+s[a1==1] <- rbinom(length(which(a1==1)),size=1,stage_one_trt_one_response_prob)
+s[a1==-1] <- rbinom(length(which(a1==-1)),size=1,stage_one_trt_two_response_prob)
+#End-of-study outcomes
+y <- rep(NA,sample_size)
+y[a1==1&s==1] <- rbinom(length(which(a1==1&s==1)), size = 1, prob = response_prob[1])
+y[a1==1&s==0&a2==1] <- rbinom(length(which(a1==1&s==0&a2==1)), size = 1, prob = response_prob[2])
+y[a1==1&s==0&a2==-1] <- rbinom(length(which(a1==1&s==0&a2==-1)), size = 1, prob = response_prob[3])
+y[a1==-1&s==1] <- rbinom(length(which(a1==-1&s==1)), size = 1, prob = response_prob[4])
+y[a1==-1&s==0&a2==1] <- rbinom(length(which(a1==-1&s==0&a2==1)), size = 1, prob = response_prob[5])
+y[a1==-1&s==0&a2==-1] <- rbinom(length(which(a1==-1&s==0&a2==-1)), size = 1, prob = response_prob[6])
+sim_list[[i]]<-data.frame(a1,s,a2,y)
+}
+sim_list
+}
+set.seed(3643)
+sim_binary_grid <- lapply(seq(150,500,50),function(x) SimulateBinaryDesign1(sample_size=x,
+n_sim=1000,
+response_prob = c(0.5,0.9,0.3,0.7,0.5,0.8),
+0.7,
+0.5))
+#Apply Robin's G-computation formula to compute the embedded dynamic treatment regime (EDTR) draws
+ComputePosteriorEDTRProbsDesign1 <- function(x) {
+cbind(x[,"p_1"]*(x[,"s1"])+x[,"p_2"]*(1-(x[,"s1"])),
+x[,"p_1"]*(x[,"s1"])+x[,"p_3"]*(1-(x[,"s1"])),
+x[,"p_4"]*(x[,"s2"])+x[,"p_5"]*(1-(x[,"s2"])),
+x[,"p_4"]*(x[,"s2"])+x[,"p_6"]*(1-(x[,"s2"])))
+}
+#Compute Log-Odds Ratios for each Embedded Dynamic Treatment Regime
+LogOR <- function(response_prob = c(0.5,0.9,0.3,0.7,0.5,0.8),
+stage_one_trt_one_response_prob = 0.7,
+stage_one_trt_two_response_prob = 0.5) {
+#Arguments
+#response_prob: probability of response for each of embedded treatment sequences.
+#stage_one_trt_one_response_prob: probability of response to stage-1 treatment one
+#stage_one_trt_two_response_prob: probability of response to stage-1 treatment two
+#Compute mean embedded dynamic treatment regime outcomes
+EDTRs <- c(
+response_prob[1] * stage_one_trt_one_response_prob + response_prob[2] * (1 - stage_one_trt_one_response_prob),
+response_prob[1] * stage_one_trt_one_response_prob + response_prob[3] * (1 - stage_one_trt_one_response_prob),
+response_prob[4] * stage_one_trt_two_response_prob + response_prob[5] * (1 - stage_one_trt_two_response_prob),
+response_prob[4] * stage_one_trt_two_response_prob + response_prob[6] * (1 - stage_one_trt_two_response_prob)
+)
+# Compute log-OR
+thetadraws_log_odds <- log(EDTRs / (1 - EDTRs))
+# Compute index of best EDTR
+max_odds_ind <- (which.max((thetadraws_log_odds)))
+# Compute log-odds ratios between each EDTR and best
+Log_OR_output <- matrix((thetadraws_log_odds - thetadraws_log_odds[max_odds_ind]), nrow = 1, ncol = length(thetadraws_log_odds))
+colnames(Log_OR_output) <- c(
+"EDTR 1",
+"EDTR 2",
+"EDTR 3",
+"EDTR 4"
+)
+return(Log_OR_output)
+}
+library(LaplacesDemon)
+PosteriorTrtSeqProbDesign1 <- function(niter, dat) {
+#Arguments
+#niter: number of draws from the posteriors of response probabilities
+#dat: dataset
+#End of study binary response indicator
+y <- dat$y
+#Stage-1 treatment assignment indicator
+a1 <- dat$a1
+#Stage-2 treatment assignment indicator
+a2 <- dat$a2
+#End of stage-1 binary response indicator
+s <- dat$s
+results <- matrix(NA, nrow = niter, ncol = 8)
+colnames(results) <- c("p_1","p_2","p_3","p_4","p_5","p_6","s1","s2")
+p_1_results <- p_2_results <- p_3_results <- p_4_results <- p_5_results <- p_6_results <- rep(0.5,niter)
+s1_results <- s2_results <- rep(0.5,niter)
+#Simulate from each of the six treatment sequences, the probability of response at the end of the trial from the posterior
+p_1_results <- rbeta(niter, shape1 = sum(y[a1==1&s==1])+1, sum(a1==1&s==1)-sum(y[a1==1&s==1])+1)
+p_2_results <- rbeta(niter, shape1 = sum(y[a1==1&s==0&a2==1])+1, sum(a1==1&s==0&a2==1)-sum(y[a1==1&s==0&a2==1])+1)
+p_3_results <- rbeta(niter, shape1 = sum(y[a1==1&s==0&a2==-1])+1, sum(a1==1&s==0&a2==-1)-sum(y[a1==1&s==0&a2==-1])+1)
+p_4_results <- rbeta(niter, shape1 = sum(y[a1==-1&s==1])+1, sum(a1==-1&s==1)-sum(y[a1==-1&s==1])+1)
+p_5_results <- rbeta(niter, shape1 = sum(y[a1==-1&s==0&a2==1])+1, sum(a1==-1&s==0&a2==1)-sum(y[a1==-1&s==0&a2==1])+1)
+p_6_results <- rbeta(niter, shape1 = sum(y[a1==-1&s==0&a2==-1])+1, sum(a1==-1&s==0&a2==-1)-sum(y[a1==-1&s==0&a2==-1])+1)
+#Simulate from each of the two first stage treatments the probability of response at the end of stage-1 from the posterior
+s1_results <- rbeta(niter, sum(s[a1==1])+1, sum(a1==1)-sum(s[a1==1])+1)
+s2_results <- rbeta(niter, sum(s[a1==-1])+1, sum(a1==-1)-sum(s[a1==-1])+1)
+results[,"p_1"] <- p_1_results
+results[,"p_2"]<-p_2_results
+results[,"p_3"] <- p_3_results
+results[,"p_4"]<-p_4_results
+results[,"p_5"]<-p_5_results
+results[,"p_6"]<-p_6_results
+results[,"s1"] <- s1_results
+results[,"s2"] <- s2_results
+return(results)
+}
+set.seed(3752)
+dat <- SimulateBinaryDesign1(sample_size = 150,
+n_sim = 5000)
+library(tidyverse)
+computeEDTRDrawsFromSim <- function(x,dat,niter=10000) {
+#bayesian_thetas_100 <- lapply(sim_1,function(x) ComputePosteriorEDTRProbsDesign1(PosteriorTrtSeqProbDesign1(niter=1000, dat= x)))
+#bayesian_outcomes_100 <- colMeans(do.call(rbind,lapply(bayesian_thetas_100, function(x) colMeans(x))))
+#bayesian_SE_100 <- apply(do.call(rbind,lapply(bayesian_thetas_100, function(x) colMeans(x))),2,sd)
+beta_probit_current <- MASS::mvrnorm(1,c(0,0,0),diag(1,length(c(0,0,0))))
+s_continuous <- rnorm(nrow(dat[[x]]),0,1)
+beta_probit_results <- matrix(NA, nrow = niter,ncol= 3)
+sigma_results <- rep(NA,niter)
+sigma_probit_current <- 1
+dat[[x]] <- dat[[x]] %>% filter(s == 1) %>% rbind(dat[[x]] %>% filter(s == 1) %>% mutate(a2 =-a2), dat[[x]] %>% filter(s==0))
+w <- (dat[[x]]$s==1)/(0.5) +
+(dat[[x]]$s==0)/(0.25)
+y <- dat[[x]][,4]
+dat[[x]] <- as.matrix(dat[[x]])[,-c(4)]
+for (j in 1:niter) {
+for (i in 1:length(y)) {
+if (y[i]==1) {
+s_continuous[i] <- truncnorm::rtruncnorm(1,0,Inf,dat[[x]][i,] %*% beta_probit_current,1)
+} else {
+s_continuous[i] <- truncnorm::rtruncnorm(1,-Inf,0,dat[[x]][i,] %*% beta_probit_current,1)
+}
+}
+beta_probit_current <- MASS::mvrnorm(1,solve(t(dat[[x]])%*%diag(w)%*%dat[[x]])%*%t(dat[[x]])%*%diag(w)%*%s_continuous, sigma_probit_current* solve(t(dat[[x]])%*%diag(w)%*%dat[[x]]))
+RSS <- t(s_continuous-dat[[x]] %*% beta_probit_current)%*%diag(w)%*%(s_continuous-dat[[x]] %*% beta_probit_current)
+sigma_probit_current <- LaplacesDemon::rinvchisq(1,length(y)-3,RSS/(length(y)-3))
+beta_probit_results[j,] <- t(beta_probit_current)
+sigma_results[j] <- sigma_probit_current
+print(j)
+}
+return(beta_probit_results)
+}
+results <- computeEDTRDrawsFromSim(1)
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+upper_limit_2 <- rep(0,4)
+upper_limit_2[max_odds_ind] <- 0
+upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit_2)
+}
+results <- computeEDTRDrawsFromSim(1)
+set.seed(3752)
+dat <- SimulateBinaryDesign1(sample_size = 150,
+n_sim = 5000)
+library(tidyverse)
+computeEDTRDrawsFromSim <- function(x,dat,niter=10000) {
+#bayesian_thetas_100 <- lapply(sim_1,function(x) ComputePosteriorEDTRProbsDesign1(PosteriorTrtSeqProbDesign1(niter=1000, dat= x)))
+#bayesian_outcomes_100 <- colMeans(do.call(rbind,lapply(bayesian_thetas_100, function(x) colMeans(x))))
+#bayesian_SE_100 <- apply(do.call(rbind,lapply(bayesian_thetas_100, function(x) colMeans(x))),2,sd)
+beta_probit_current <- MASS::mvrnorm(1,c(0,0,0),diag(1,length(c(0,0,0))))
+s_continuous <- rnorm(nrow(dat[[x]]),0,1)
+beta_probit_results <- matrix(NA, nrow = niter,ncol= 3)
+sigma_results <- rep(NA,niter)
+sigma_probit_current <- 1
+dat[[x]] <- dat[[x]] %>% filter(s == 1) %>% rbind(dat[[x]] %>% filter(s == 1) %>% mutate(a2 =-a2), dat[[x]] %>% filter(s==0))
+w <- (dat[[x]]$s==1)/(0.5) +
+(dat[[x]]$s==0)/(0.25)
+y <- dat[[x]][,4]
+dat[[x]] <- as.matrix(dat[[x]])[,-c(4)]
+for (j in 1:niter) {
+for (i in 1:length(y)) {
+if (y[i]==1) {
+s_continuous[i] <- truncnorm::rtruncnorm(1,0,Inf,dat[[x]][i,] %*% beta_probit_current,1)
+} else {
+s_continuous[i] <- truncnorm::rtruncnorm(1,-Inf,0,dat[[x]][i,] %*% beta_probit_current,1)
+}
+}
+beta_probit_current <- MASS::mvrnorm(1,solve(t(dat[[x]])%*%diag(w)%*%dat[[x]])%*%t(dat[[x]])%*%diag(w)%*%s_continuous, sigma_probit_current* solve(t(dat[[x]])%*%diag(w)%*%dat[[x]]))
+RSS <- t(s_continuous-dat[[x]] %*% beta_probit_current)%*%diag(w)%*%(s_continuous-dat[[x]] %*% beta_probit_current)
+sigma_probit_current <- LaplacesDemon::rinvchisq(1,length(y)-3,RSS/(length(y)-3))
+beta_probit_results[j,] <- t(beta_probit_current)
+sigma_results[j] <- sigma_probit_current
+print(j)
+}
+return(beta_probit_results)
+}
+results <- computeEDTRDrawsFromSim(1)
+results <- computeEDTRDrawsFromSim(1,dat)
+EDTR_mat <- matrix(NA,nrow=niter,ncol=4)
+EDTR_mat[,1] <- pnorm(results[,1]+results[,2]+results[,3])
+EDTR_mat[,2] <- pnorm(results[,1]+results[,2]-results[,3])
+EDTR_mat[,3] <- pnorm(results[,1]-results[,2]+results[,3])
+EDTR_mat[,4] <- pnorm(results[,1]-results[,2]-results[,3])
+#Credible interval coverage
+thetadraws_log_odds <- log(EDTR_mat/(1-EDTR_mat))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+EDTR_mat <- matrix(NA,nrow=niter,ncol=3)
+niter=10000
+EDTR_mat <- matrix(NA,nrow=niter,ncol=3)
+EDTR_mat <- matrix(NA,nrow=niter,ncol=4)
+EDTR_mat[,1] <- pnorm(results[,1]+results[,2]+results[,3])
+EDTR_mat[,2] <- pnorm(results[,1]+results[,2]-results[,3])
+EDTR_mat[,3] <- pnorm(results[,1]-results[,2]+results[,3])
+EDTR_mat[,4] <- pnorm(results[,1]-results[,2]-results[,3])
+#Credible interval coverage
+thetadraws_log_odds <- log(EDTR_mat/(1-EDTR_mat))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws_log_odds),ncol=3)
+mean(apply(Log_OR_matrix<=matrix(ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05),nrow=niter,ncol=4,byrow = T),1,prod))
+mean(apply(Log_OR_matrix<=matrix(ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05),nrow=niter,ncol=3,byrow = T),1,prod))
+Log_OR_matrix
+ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05)
+ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05)
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+upper_limit_2 <- rep(0,4)
+upper_limit_2[max_odds_ind] <- 0
+upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit_2)
+}
+ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05)
+Log_OR_matrix
+mean(apply(cbind(1,Log_OR_matrix)<=matrix(ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05),nrow=niter,ncol=3,byrow = T),1,prod))
+mean(apply(cbind(Log_OR_matrix)<=matrix(ComputeMCBUpperLimitsDesign1(EDTR_mat,0.05)[2:4],nrow=niter,ncol=3,byrow = T),1,prod))
+##########
+library(doParallel)
+expit <- function(x) exp(x)/(1+exp(x))
+#Number of cores/threads
+no_cores <- detectCores()-2
+cl<-makeCluster(no_cores)
+registerDoParallel((cl))
+Sys.time()
+set.seed(1274)
+clusterSetRNGStream(cl, 123)
+tst_0.5_interaction_start <- Sys.time()
+#47 replicates, 10000 iterations, 5 mixture components
+#Runs main effects or interaction depending on what computeBetas is. That is, whether you run 2-ENGAGE-Interaction-Fit-Full-Conditionals.R or
+#2-ENGAGE-Main-Effects-Fit-Full-Conditionals.R before. The object title can be chosen appropriately
+results_dat_sim_coverage_5000_rep_10000iter <- foreach(i =1:5000,.errorhandling = "pass",.packages=c("dplyr","tmvtnorm",
+"truncnorm",
+"LaplacesDemon",
+"MASS",
+"condMVNorm","geepack")) %dopar% computeEDTRDrawsFromSim(i,dat,niter=10000)
+stopCluster(cl)
+Sys.time()
+tst_0.5_interaction_stop <- Sys.time()
+setwd("C:/Users/willa/Dropbox/SMART-Research-Ideas/Bayesian-MCB-SIM-2")
+save(results_dat_sim_coverage_5000_rep_10000iter,file="results_dat_sim_coverage_5000_rep_10000iter_L_1.rda")
+computeDifference <- function(thetadraws) {
+upper_limit <- rep(NA,4)
+thetadraws <- thetadraws
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws_log_odds),ncol=3)
+return(Log_OR_matrix)
+}
+########
+#Frequentist
+differences  <- apply(do.call(rbind,lapply(results_dat_sim_coverage_5000_rep_10000iter,function(z) apply((computeDifference(computeEDTRsFromMSM(z[1:10000,]))),2,mean))),2,mean)
+computeEDTRsFromMSM <- function(results) {
+EDTR_mat <- matrix(NA,nrow=nrow(results),ncol=4)
+EDTR_mat[,1] <- pnorm(results[,1]+results[,2]+results[,3])
+EDTR_mat[,2] <- pnorm(results[,1]+results[,2]-results[,3])
+EDTR_mat[,3] <- pnorm(results[,1]-results[,2]+results[,3])
+EDTR_mat[,4] <- pnorm(results[,1]-results[,2]-results[,3])
+return(EDTR_mat)
+}
+########
+#Frequentist
+differences  <- apply(do.call(rbind,lapply(results_dat_sim_coverage_5000_rep_10000iter,function(z) apply((computeDifference(computeEDTRsFromMSM(z[1:10000,]))),2,mean))),2,mean)
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:5000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))>=differences))))),4))
+#Bayesian
+c("Bayesian", round(median(unlist(lapply(1:5000,function(x) mean(apply(matrix((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))),nrow=10000,ncol=4,byrow=T)>=computeDifference(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,])),1,prod))))),4))
+differences
+differences
+########
+#Frequentist
+differences  <- c(0,apply(do.call(rbind,lapply(results_dat_sim_coverage_5000_rep_10000iter,function(z) apply((computeDifference(computeEDTRsFromMSM(z[1:10000,]))),2,mean))),2,mean))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:50,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))>=differences))))),4))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:500,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))>=differences))))),4))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:5000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))>=differences))))),4))
+differences
+x=1
+ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))
+apply(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]),2,quantile,0.95)
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][5000:10000,]))>=differences))))),4))
+differences
+differences <- differences[2:4]
+differences
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+#upper_limit_2 <- rep(0,4)
+#upper_limit_2[max_odds_ind] <- 0
+#upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit)
+}
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][5000:10000,]))>=differences))))),4))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][1:10000,]))>=differences))))),4))
+differences
+########
+#Frequentist
+differences  <- apply(do.call(rbind,lapply(results_dat_sim_coverage_5000_rep_10000iter,function(z) apply((computeDifference(computeEDTRsFromMSM(z[5000:10000,]))),2,median))),2,median)
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][5000:10000,]))>=differences))))),4))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:5000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][7500:10000,]))>=differences))))),4))
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="min")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+#upper_limit_2 <- rep(0,4)
+#upper_limit_2[max_odds_ind] <- 0
+#upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit)
+}
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][7500:10000,]))>=differences))))),4))
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds[,-max_odds_ind]-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=3)
+colnames(Log_OR_matrix) <- c(1,2,3,4)[-max_odds_ind]
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="max")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+#upper_limit_2 <- rep(0,4)
+#upper_limit_2[max_odds_ind] <- 0
+#upper_limit_2[-max_odds_ind] <- upper_limit
+return(upper_limit)
+}
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][7500:10000,]))>=differences))))),4))
+#Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+#Arguments:
+#thetadraws: draws of embedded dynamic treatment regime draws
+#alpha: Type I error rate (probability of excluding the true best EDTR)
+upper_limit <- rep(NA,4)
+#Compute log-OR
+thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
+#Compute index of best EDTR
+max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
+#Compute log-odds ratios between each EDTR and best
+Log_OR_matrix <- thetadraws_log_odds-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=4)
+#Rank log-OR
+rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+#Find max rank
+rank_max <- apply(rank_matrix,1,max)
+#Create sorted log-OR
+new_dat <- apply(Log_OR_matrix[,],2,sort)
+#Compute 100(1-alpha)% upper quantile
+ranks_quantile <- ceiling(quantile(rank_max,1-alpha))
+#Compute upper limit of credible interval. One for each log-OR which determines the set of best.
+upper_limit <-new_dat[ranks_quantile,]
+return(upper_limit)
+}
+########
+#Frequentist
+differences  <- c(0,apply(do.call(rbind,lapply(results_dat_sim_coverage_5000_rep_10000iter,function(z) apply((computeDifference(computeEDTRsFromMSM(z[5000:10000,]))),2,mean))),2,mean))
+#Frequentist
+c("Frequentist",round(mean(unlist(lapply(1:1000,function(x) prod((ComputeMCBUpperLimitsDesign1(computeEDTRsFromMSM(results_dat_sim_coverage_5000_rep_10000iter[[x]][7500:10000,]))>=differences))))),4))

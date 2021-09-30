@@ -2,12 +2,12 @@
 #Compute simultaneous alpha level credible intervals from probabilities of response for each embedded dynamic treatment regime
 
 
-ComputeMCBUpperLimitsGeneral <- function(thetadraws, alpha = 0.05) {
+ComputeMCBUpperLimitsGeneral <- function(thetadraws, 
+                                         alpha = 0.05) {
   
-  #Arguments
-  #thetadraws: draws of embedded dynamic treatment regime response probabilities
-  #alpha: type I error rate (excluding the optimal embedded dynamic treatment regime)
-  
+  # Arguments:
+  # thetadraws: draws of embedded dynamic treatment regime response probabilities
+  # alpha: probability of excluding the optimal embedded dynamic treatment regime
   
   upper_limit <- rep(NA,8)
 
@@ -21,8 +21,9 @@ ComputeMCBUpperLimitsGeneral <- function(thetadraws, alpha = 0.05) {
   Log_OR_matrix <- thetadraws_log_odds-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=8)
 
   #Rank log-OR
-  rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method = 'random')
-
+  #rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method = 'random')
+  rank_matrix <- apply(Log_OR_matrix[,-max_odds_ind],2,rank,ties.method = 'random')
+  
   #Find max rank
   rank_max <- apply(rank_matrix,1,max)
 
@@ -35,6 +36,7 @@ ComputeMCBUpperLimitsGeneral <- function(thetadraws, alpha = 0.05) {
   #Compute upper limit of credible interval. One for each log-OR which determines the set of best.
   upper_limit <-new_dat[ranks_quantile,]
 
-
+  
+  
   return(upper_limit)
 }

@@ -2,17 +2,24 @@
 
 ComputePowerBayesianGeneral <- function(sample_size=500,
                                  response_prob = c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),
-                                 stage_one_trt_one_response_prob = 0.7,
-                                 stage_one_trt_two_response_prob = 0.5,
-                                 rejection_indices=c(1,2,4,5,6)){
+                                 stage_one_trt_one_response_prob = 0.5,
+                                 stage_one_trt_two_response_prob = 0.7,
+                                 threshold,
+                                 alpha=0.05
+                                 ){
   
-  #Arguments
-  #sample_size: total sample size in SMART study
-  #response_prob: probability of response for each of eight embedded treatment sequences
-  #stage_one_trt_one_response_prob: probability of response at the end of stage-1 to treatment a1=1
-  #stage_one_trt_two_response_prob: probability of response at the end of stage-1 to treatment a1=0
-  #rejection_indices: indices of embedded DTRs to exclude from the set of best in power calculation
-
+  # Arguments:
+  # sample_size: total sample size in SMART study
+  # response_prob: probability of response for each of eight embedded treatment sequences
+  # stage_one_trt_one_response_prob: probability of response at the end of stage-1 to treatment a1=1
+  # stage_one_trt_two_response_prob: probability of response at the end of stage-1 to treatment a1=0
+  # threshold: threshold of log-OR for exclusion from the set of best
+  # alpha: probability of excluding true best EDTR from the set of best
+  
+  pb <- txtProgressBar(min=0,
+                       max=1000,
+                       initial = 0,
+                       style=3)
   
   upper_limit <- array(NA, dim=c(1000,10,8))
 
@@ -26,8 +33,8 @@ ComputePowerBayesianGeneral <- function(sample_size=500,
   
   #Stage-1 treatment indicator
   a1 <- rbinom(sample_size,1,0.5)
-  s[a1==1] <- rbinom(length(which(a1==1)),1,stage_one_trt_two_response_prob)
-  s[a1==0] <- rbinom(length(which(a1==0)),1,stage_one_trt_one_response_prob)
+  s[a1==1] <- rbinom(length(which(a1==1)),1,stage_one_trt_one_response_prob)
+  s[a1==0] <- rbinom(length(which(a1==0)),1,stage_one_trt_two_response_prob)
 
   #Stage-2 randomization indicator for responders to stage-1 treatment
   a2r<-2*rbinom(sample_size,1,0.5)-1
@@ -48,7 +55,7 @@ ComputePowerBayesianGeneral <- function(sample_size=500,
   
   
   for (j in 1:10) {
-  #Draw 100 draws from the posterior of the probability of response at the end of the study for each of the eight embedded treatment sequences.
+  #Draw 1000 draws from the posterior of the probability of response at the end of the study for each of the eight embedded treatment sequences.
   p_1_results <- rbeta(1000, shape1 = sum(y1)+1, shape2=sum(a1==1&s==1&a2r==1)-sum(y1)+1)
   p_2_results <- rbeta(1000, shape1 = sum(y2)+1,shape2 = sum(a1==1&s==1&a2r==-1)-sum(y2)+1)
   p_3_results <- rbeta(1000, shape1 = sum(y3)+1,shape2 = sum(a1==1&s==0&a2nr==1)-sum(y3)+1)
@@ -65,7 +72,7 @@ ComputePowerBayesianGeneral <- function(sample_size=500,
   s2 <- rbeta(1000, sum(s[a1==0])+1,sum(a1==0)-sum(s[a1==0])+1)
   
   
-  #Compute embedded DTR end of study response probability draws using Robin's G-computation formula
+  #Compute embedded DTR end of study response probability draws using Robins' G-computation formula
   thetadraws <- cbind(p_1_results*(s1)+p_3_results*(1-(s1)),
         p_1_results*(s1)+p_4_results*(1-(s1)),
         p_2_results*(s1)+p_3_results*(1-(s1)),
@@ -75,28 +82,37 @@ ComputePowerBayesianGeneral <- function(sample_size=500,
         p_6_results*(s2)+p_7_results*(1-(s2)),
         p_6_results*(s2)+p_8_results*(1-(s2)))
   
-  
   #Perform Bayesian MCB
+    logORThreshold <- LogOR(response_prob,
+                            stage_one_trt_one_response_prob,
+                            stage_one_trt_two_response_prob)
   thetadraws_log_odds <- log(thetadraws/(1-thetadraws))
   max_odds_ind <- which.max(colMeans(thetadraws_log_odds))
   
   log_OR_matrix <- thetadraws_log_odds-matrix(thetadraws_log_odds[,max_odds_ind],nrow=1000,ncol=8)
   
   
-  rank_matrix <- apply(log_OR_matrix,2,rank,ties.method = 'min')
+  #rank_matrix <- apply(log_OR_matrix,2,rank,ties.method = 'random')
+  rank_matrix <- apply(log_OR_matrix[,-max_odds_ind],2,rank,ties.method = 'random')
   
   rank_max <- apply(rank_matrix,1,max)
   
   
   new_dat <- apply(log_OR_matrix[,],2,sort)
   
-  ranks_quantile <- floor(quantile(rank_max,1-0.05))
+  ranks_quantile <- floor(quantile(rank_max,1-alpha))
   
   upper_limit[i,j,] <-new_dat[ranks_quantile,]
-  print(i)
   }
+  setTxtProgressBar(pb, i)
   
   }
+  close(pb)
+  
+  
+    rejection_indices <- which(abs(logORThreshold)>threshold)
+
+
   if (length(rejection_indices)==1) {
     return(mean(apply(upper_limit, 3, function(x) x)[, rejection_indices] < 0))
     

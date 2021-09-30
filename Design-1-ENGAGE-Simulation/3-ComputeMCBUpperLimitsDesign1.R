@@ -1,10 +1,12 @@
 #Compute simultaneous credible intervals from draws of embedded dynamic treatment regime response probabilities given by thetadraws
 
-ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
+ComputeMCBUpperLimitsDesign1 <- function(thetadraws,
+                                         alpha=0.05) {
   
-  #Arguments:
-  #thetadraws: draws of embedded dynamic treatment regime draws
-  #alpha: Type I error rate (probability of excluding the true best EDTR)
+  
+  # Arguments:
+  # thetadraws: embedded dynamic treatment regime draws
+  # alpha: Probability of excluding the true best EDTR
   
   upper_limit <- rep(NA,4)
 
@@ -18,8 +20,9 @@ ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
   Log_OR_matrix <- thetadraws_log_odds-matrix(thetadraws_log_odds[,max_odds_ind],nrow=nrow(thetadraws),ncol=4)
 
   #Rank log-OR
-  rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
-
+  #rank_matrix <- apply(Log_OR_matrix,2,rank,ties.method="random")
+  rank_matrix <- apply(Log_OR_matrix[,-max_odds_ind],2,rank,ties.method="random")
+  
   #Find max rank
   rank_max <- apply(rank_matrix,1,max)
 
@@ -32,6 +35,6 @@ ComputeMCBUpperLimitsDesign1 <- function(thetadraws,alpha=0.05) {
   #Compute upper limit of credible interval. One for each log-OR which determines the set of best.
   upper_limit <-new_dat[ranks_quantile,]
 
-
+  
   return(upper_limit)
 }

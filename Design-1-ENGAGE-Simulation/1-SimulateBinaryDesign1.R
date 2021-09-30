@@ -1,4 +1,4 @@
-#Simulates n_sim datasets of size "sample_size" for a SMART design similar to Design-1
+#Simulates n_sim datasets of size "sample_size" for a SMART design similar to an ENGAGE-type study. In the code, we call this 'Design-1'.
 
 SimulateBinaryDesign1 <- 
   function(sample_size=1000,
@@ -9,7 +9,7 @@ SimulateBinaryDesign1 <-
   
     # Arguments:
     # sample_size: sample size
-    # n_sim: number of replicate datasets
+    # n_sim: number of replicate data sets
     # response_prob: vector of probabilities of response for each of the 6 embedded treatment sequences
     # stage_one_trt_one_response_prob: probability of response to first stage-1 treatment
     # stage_one_trt_two_response_prob: probability of response to second stage-1 treatment
@@ -47,7 +47,7 @@ SimulateBinaryDesign1 <-
 
 set.seed(3643)
 sim_binary_grid <- lapply(seq(150,500,50),function(x) SimulateBinaryDesign1(sample_size=x, 
-                                                                            n_sim=1000,
+                                                                            n_sim=2000,
                                                                             response_prob = c(0.5,0.9,0.3,0.7,0.5,0.8),
                                                                             0.7,
                                                                             0.5))
