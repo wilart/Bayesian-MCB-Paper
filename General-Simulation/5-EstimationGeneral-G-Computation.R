@@ -1,13 +1,13 @@
 library(dplyr)
 
-true_outcomes <- c(0.5*0.4+0.7*0.6,
-                   0.5*0.4+0.6*0.6,
-                   0.9*0.4+0.7*0.6,
-                   0.9*0.4+0.6*0.6,
-                   0.8*0.7+0.4*0.3,
-                   0.8*0.7+0.5*0.3,
-                   0.8*0.7+0.4*0.3,
-                   0.8*0.7+0.5*0.3)
+true_outcomes <- c(0.5*0.5+0.7*0.5,
+                   0.5*0.5+0.2*0.5,
+                   0.9*0.5+0.7*0.5,
+                   0.9*0.5+0.2*0.5,
+                   0.2*0.7+0.2*0.3,
+                   0.2*0.7+0.7*0.3,
+                   0.8*0.7+0.2*0.3,
+                   0.8*0.7+0.7*0.3)
 
 
 
@@ -29,9 +29,9 @@ results_dat_sim_general_coverage_400_1000_rep_5000iter <- lapply(dat_400,functio
 
 
 
-MSM_outcomes_400 <- colMeans(do.call(rbind,lapply(results_dat_sim_estimation_400_400_rep_5000iter_general,function(x)colMeans((x)))))
-MSM_SE_400 <- apply(do.call(rbind,lapply(results_dat_sim_estimation_400_400_rep_5000iter_general,function(x)colMeans((x)))),2,sd)
-MSM_SD_400 <- apply(do.call(rbind,lapply(results_dat_sim_estimation_400_400_rep_5000iter_general,function(x)apply((x),2,sd))),2,mean)
+MSM_outcomes_400 <- colMeans(do.call(rbind,lapply(results_dat_sim_general_coverage_400_1000_rep_5000iter,function(x)colMeans((x)))))
+MSM_SE_400 <- apply(do.call(rbind,lapply(results_dat_sim_general_coverage_400_1000_rep_5000iter,function(x)colMeans((x)))),2,sd)
+MSM_SD_400 <- apply(do.call(rbind,lapply(results_dat_sim_general_coverage_400_1000_rep_5000iter,function(x)apply((x),2,sd))),2,mean)
 
 
 #######

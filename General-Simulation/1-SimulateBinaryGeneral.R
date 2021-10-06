@@ -2,8 +2,8 @@
 
 GeneralSimulateBinary <- function(sample_size=1000,
                                   n_sim,
-                                  response_prob = c(0.5,0.9,0.7,0.6,0.8,0.8,0.4,0.5),
-                                  stage_one_trt_one_response_prob = 0.4,
+                                  response_prob = c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),
+                                  stage_one_trt_one_response_prob = 0.5,
                                   stage_one_trt_two_response_prob = 0.7) {
   
   # Arguments
