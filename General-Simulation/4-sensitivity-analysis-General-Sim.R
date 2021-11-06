@@ -16,8 +16,8 @@ LogOR(c(0.5,0.9,0.7,0.2,0.2,0.8,0.2,0.7),0.7,0.5)
 
 
 
-response_prob <- data.frame(expand.grid(seq(0.7,0.9,0.1),seq(0.6,0.8,0.1),seq(0.2,0.5,0.1),seq(100,500,100)))
-colnames(response_prob) <- c("phi_1",
+response_prob <- data.frame(expand.grid(c(0.8,0.9,0.95),seq(0.6,0.8,0.1),seq(0.2,0.5,0.1),seq(100,500,100)))
+colnames(response_prob) <- c("phi_2",
                              "phi_3",
                              "phi",
                              "sample_size")
@@ -176,7 +176,7 @@ tst_0.5_interaction_start <- Sys.time()
 
 set.seed(1274)
 power_sensitivity_General_parameter4 <-foreach(z=1:180) %dorng% ComputePowerBayesianGeneral(sample_size = response_prob[z,4],
-                                                                                                                                                         as.vector(c(response_prob[z,1],response_prob[z,3],as.vector(response_prob[z,2]),(rep(response_prob[z,3],5))),mode="numeric"),
+                                                                                                                                                         as.vector(c(response_prob[z,3],response_prob[z,1],response_prob[z,2],as.vector(response_prob[z,3]),(rep(response_prob[z,3],4))),mode="numeric"),
                                                                                                                                                          #response_prob =response_prob[[2]][[2]],
                                                                                                                                                          stage_one_trt_one_response_prob = stage_one_trt_one_response_prob,
                                                                                                                                                          stage_one_trt_two_response_prob = stage_one_trt_two_response_prob,
@@ -214,19 +214,19 @@ library(reshape2)
 library(tidyverse)
 
 response_prob_mat <- cbind(response_prob,unlist(power_sensitivity_General_parameter4))
-colnames(response_prob_mat) <- c("phi_1","phi_3","phi","sample_size", "Power")
-power_sensitivity_melt <- melt(response_prob_mat,id.var=c("sample_size","Power","phi_1","phi_3"))
+colnames(response_prob_mat) <- c("phi_2","phi_3","phi","sample_size", "Power")
+power_sensitivity_melt <- melt(response_prob_mat,id.var=c("sample_size","Power","phi_2","phi_3"))
 
 
 library(ggplot2)
-power_sensitivity_melt$phi_1 <- as.factor(power_sensitivity_melt$phi_1)
+power_sensitivity_melt$phi_2 <- as.factor(power_sensitivity_melt$phi_2)
 power_sensitivity_melt$phi_3 <- as.factor(power_sensitivity_melt$phi_3)
 power_sensitivity_melt$value <- as.factor(power_sensitivity_melt$value)
 library(latex2exp)
 
-levels(power_sensitivity_melt$phi_1) <- c(TeX('$\\phi_1 = 0.7$'),
-                                          TeX('$\\phi_1 = 0.8$'),
-                                          TeX('$\\phi_1 = 0.9$'))
+levels(power_sensitivity_melt$phi_2) <- c(TeX('$\\phi_2 = 0.8$'),
+                                          TeX('$\\phi_2 = 0.9$'),
+                                          TeX('$\\phi_2 = 0.95$'))
 levels(power_sensitivity_melt$phi_3) = c(TeX('$\\phi_3 = 0.6$'),
                                          TeX('$\\phi_3 = 0.7$'),
                                          TeX('$\\phi_3 = 0.8$'))
@@ -238,16 +238,17 @@ labels <- unname(TeX(c(('$\\phi_{inf} = 0.2'),
                        ('$\\phi_{inf} = 0.3'),
                        ('$\\phi_{inf} = 0.4'),
                        ('$\\phi_{inf} = 0.5'))))
-#pdf('Sensitivity-analysis-binary-outcome-General-9-29-21.pdf',width = 17,height=12)
+#pdf('Sensitivity-analysis-binary-outcome-General-11-6-21.pdf',width = 17,height=12)
 
-ggplot2::ggplot(power_sensitivity_melt ,aes(x=`sample_size`,y=Power,colour=as.factor(value),linetype=as.factor(value)))+scale_y_continuous(breaks=seq(0,1,0.1))+geom_point(size=2)+geom_line(size=1) + facet_grid((phi_3)~(phi_1),labeller=label_parsed)+labs(color="Inferior Prob. of Response",linetype="Inferior Prob. of Response")+ ggtitle("Power vs. Sample Size Sensitivity Analysis Binary Outcome, General Simulation") + scale_x_continuous(breaks=seq(100,500,100)) + theme_bw()+ theme(plot.title = element_text(hjust = 0.5,face="bold"),
+ggplot2::ggplot(power_sensitivity_melt ,aes(x=`sample_size`,y=Power,colour=as.factor(value),linetype=as.factor(value)))+scale_y_continuous(breaks=seq(0,1,0.1))+geom_point(size=2)+geom_line(size=1,) + facet_grid((phi_3)~(phi_2),labeller=label_parsed)+labs(color="Inferior Prob. of Response",linetype="Inferior Prob. of Response")+ ggtitle("Power vs. Sample Size Sensitivity Analysis Binary Outcome, General Simulation") + scale_x_continuous(breaks=seq(100,500,100)) + theme_bw()+ theme(plot.title = element_text(hjust = 0.5,face="bold"),
                                                                                                                                                                                                                                                                                                                                                                                                                                                           axis.ticks.length = unit(0.5, "cm"),
                                                                                                                                                                                                                                                                                                                                                                                                                                                           axis.text=element_text(size=16), 
                                                                                                                                                                                                                                                                                                                                                                                                                                                           axis.title.y=element_text(size=16,face="bold"),
                                                                                                                                                                                                                                                                                                                                                                                                                                                           axis.title.x=element_text(size=16,face="bold"),
                                                                                                                                                                                                                                                                                                                                                                                                                                                           legend.key.width = unit(1.5,"cm"),
                                                                                                                                                                                                                                                                                                                                                                                                                                                           strip.text = element_text(size=18),
-                                                                                                                                                                                                                                                                                                                                                                                                                                                          legend.text = element_text(size=18))+xlab("n")+ylab("Power")+scale_color_discrete(labels = labels)+scale_linetype_discrete(labels = labels)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                          legend.text = element_text(size=18))+xlab("n")+ylab("Power")+
+  scale_linetype_manual(name="Inferior Prob. of Response",values=c("twodash","dashed","solid","dotted"),labels=labels)+scale_color_discrete(labels=labels)
 
 #dev.off() 
 #save(power_sensitivity_melt,file="power_sensitivity_melt.rda")
